@@ -55,6 +55,16 @@
         <h3>Activity log</h3>
         <div id="activity-log" class="activity"></div>
       </div>
+      <div class="panel">
+        <h3>Data backup</h3>
+        <p class="backup-note">Redeploying the app can wipe its storage. Download a backup (database + original invoice files) before you redeploy, then restore it after.</p>
+        <div class="backup-actions">
+          <a class="btn" href="/api/backup" download>⬇ Download backup</a>
+          <button class="btn ghost" id="restore-btn">⬆ Restore from backup</button>
+          <input type="file" id="restore-input" accept=".zip" hidden>
+          <span id="restore-msg"></span>
+        </div>
+      </div>
     </section>
 
     <!-- ============ INVOICE LOG ============ -->
@@ -143,6 +153,25 @@
 
 <!-- hidden file input shared by all upload buttons -->
 <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" multiple hidden>
+
+<!-- extraction progress overlay -->
+<div id="extract-overlay" class="modal hidden">
+  <div class="modal-box extract-box">
+    <div id="extract-progress" class="extract-center">
+      <div class="spinner"></div>
+      <h2 id="extract-title">Reading your invoices…</h2>
+      <p class="extract-sub" id="extract-sub"></p>
+      <p class="extract-hint">Claude is doing OCR on each document — roughly 20 seconds per file.</p>
+    </div>
+    <div id="extract-results" class="hidden">
+      <h2>Extraction complete</h2>
+      <div id="extract-result-rows" class="extract-rows"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="extract-done">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- invoice detail modal -->
 <div id="modal" class="modal hidden">

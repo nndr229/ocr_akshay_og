@@ -1,6 +1,7 @@
 """SQLite storage layer for invoices and chat history."""
 import json
 import os
+import shutil
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -207,6 +208,41 @@ def all_for_retrieval() -> list[dict]:
                FROM invoices"""
         ).fetchall()
         return [_hydrate(dict(r)) for r in rows]
+
+
+def backup_to(dest_path: str) -> None:
+    """Write a consistent snapshot of the DB using SQLite's backup API."""
+    with _lock, _connect() as src:
+        dst = sqlite3.connect(dest_path)
+        try:
+            with dst:
+                src.backup(dst)
+        finally:
+            dst.close()
+
+
+def validate_db_file(path: str) -> bool:
+    """Check a file is a SQLite DB containing our invoices table."""
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            ok = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='invoices'"
+            ).fetchone() is not None
+            if ok:
+                conn.execute("PRAGMA integrity_check")
+            return ok
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+
+
+def replace_db(new_db_path) -> None:
+    """Swap in a restored DB file. Safe because connections are per-call."""
+    with _lock:
+        shutil.copyfile(new_db_path, DB_PATH)
+    init_db()  # ensure schema (e.g. activity_log) exists on older backups
 
 
 def _hydrate(row: dict) -> dict:

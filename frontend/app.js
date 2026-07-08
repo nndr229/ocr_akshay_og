@@ -53,38 +53,113 @@ fileInput.addEventListener("change", async () => {
   const files = [...fileInput.files];
   fileInput.value = "";
   if (!files.length) return;
-  const names = files.map((f) => f.name).join(", ");
 
   if (uploadOrigin === "chat") {
-    addChatSystem(`⏳ Processing ${files.length} file(s): ${names} …`);
+    await extractForChat(files);
   } else {
-    toast(`Extracting ${files.length} invoice(s) with Claude… this can take ~20s per file.`, 8000);
-    $("#dash-upload-btn").disabled = true;
+    await extractWithOverlay(files);
   }
+});
 
+async function postFiles(files) {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
+  const res = await fetch("/api/invoices/upload", { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Server error (${res.status})`);
+  return (await res.json()).results;
+}
+
+/* dashboard flow: full-screen progress overlay, then extracted results */
+let extractTimer;
+
+async function extractWithOverlay(files) {
+  const overlay = $("#extract-overlay");
+  const progress = $("#extract-progress");
+  const results = $("#extract-results");
+  overlay.classList.remove("hidden");
+  progress.classList.remove("hidden");
+  results.classList.add("hidden");
+  $("#extract-title").textContent =
+    files.length === 1 ? `Reading ${files[0].name}…` : `Reading ${files.length} invoices…`;
+
+  const started = Date.now();
+  const update = () => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    $("#extract-sub").textContent = `Extracting vendor, line items, taxes and totals… ${secs}s`;
+  };
+  update();
+  extractTimer = setInterval(update, 1000);
+
+  let rows;
   try {
-    const res = await fetch("/api/invoices/upload", { method: "POST", body: form });
-    const data = await res.json();
-    for (const r of data.results) {
+    rows = await postFiles(files);
+  } catch (e) {
+    rows = files.map((f) => ({ ok: false, filename: f.name, error: e.message }));
+  } finally {
+    clearInterval(extractTimer);
+  }
+
+  $("#extract-result-rows").innerHTML = rows
+    .map((r) => {
       if (r.ok) {
         const inv = r.invoice;
-        const line = `✅ ${r.filename}: filed invoice ${inv.invoice_number || "(no number)"} from ${inv.vendor_name || "unknown vendor"} — ${fmtMoney(inv.total_amount, inv.currency)}${inv.confidence === "low" ? " ⚠️ low confidence, review it" : ""}`;
-        uploadOrigin === "chat" ? addChatSystem(line) : toast(line, 6000);
+        return `
+          <div class="extract-row">
+            <span class="icon">✅</span>
+            <div class="info">
+              <div><strong>${esc(inv.vendor_name || "Unknown vendor")}</strong> — ${esc(inv.invoice_number || "no number")} · ${fmtMoney(inv.total_amount, inv.currency)}${inv.confidence === "low" ? ' <span class="conf-low">⚠ review</span>' : ""}</div>
+              <div class="file">${esc(r.filename)}</div>
+            </div>
+            <button class="btn primary" onclick="viewExtracted(${inv.id})">View invoice</button>
+          </div>`;
+      }
+      return `
+        <div class="extract-row fail">
+          <span class="icon">❌</span>
+          <div class="info">
+            <div>${esc(r.error)}</div>
+            <div class="file">${esc(r.filename)}</div>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  progress.classList.add("hidden");
+  results.classList.remove("hidden");
+  loadDashboard();
+
+  // single successful file → jump straight to the extracted invoice
+  const successes = rows.filter((r) => r.ok);
+  if (rows.length === 1 && successes.length === 1) {
+    viewExtracted(successes[0].invoice.id);
+  }
+}
+
+window.viewExtracted = function (id) {
+  $("#extract-overlay").classList.add("hidden");
+  openInvoice(id);
+};
+
+$("#extract-done").addEventListener("click", () => $("#extract-overlay").classList.add("hidden"));
+
+/* chat flow: inline status messages */
+async function extractForChat(files) {
+  addChatSystem(`⏳ Processing ${files.length} file(s): ${files.map((f) => f.name).join(", ")} …`);
+  try {
+    const rows = await postFiles(files);
+    for (const r of rows) {
+      if (r.ok) {
+        const inv = r.invoice;
+        addChatSystem(`✅ ${r.filename}: filed invoice ${inv.invoice_number || "(no number)"} from ${inv.vendor_name || "unknown vendor"} — ${fmtMoney(inv.total_amount, inv.currency)}${inv.confidence === "low" ? " ⚠️ low confidence, review it" : ""}`);
       } else {
-        const line = `❌ ${r.filename}: ${r.error}`;
-        uploadOrigin === "chat" ? addChatSystem(line, true) : toast(line, 7000);
+        addChatSystem(`❌ ${r.filename}: ${r.error}`, true);
       }
     }
     loadDashboard();
   } catch (e) {
-    const line = `Upload failed: ${e.message}`;
-    uploadOrigin === "chat" ? addChatSystem(line, true) : toast(line);
-  } finally {
-    $("#dash-upload-btn").disabled = false;
+    addChatSystem(`Upload failed: ${e.message}`, true);
   }
-});
+}
 
 /* ---------------- dashboard ---------------- */
 async function loadDashboard() {
@@ -389,6 +464,33 @@ $("#manual-form").addEventListener("submit", async (e) => {
     loadDashboard();
   } catch (err) {
     msg.textContent = `❌ ${err.message}`;
+    msg.className = "err";
+  }
+});
+
+/* ---------------- backup / restore ---------------- */
+$("#restore-btn").addEventListener("click", () => $("#restore-input").click());
+
+$("#restore-input").addEventListener("change", async () => {
+  const file = $("#restore-input").files[0];
+  $("#restore-input").value = "";
+  if (!file) return;
+  if (!confirm("Restore this backup? It replaces the current database with the backup's contents.")) return;
+  const msg = $("#restore-msg");
+  msg.textContent = "Restoring…";
+  msg.className = "";
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const res = await fetch("/api/restore", { method: "POST", body: form });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || "Restore failed");
+    msg.textContent = `✅ Restored ${body.invoices} invoices (${body.files} files)`;
+    msg.className = "ok";
+    loadDashboard();
+    loadInvoices();
+  } catch (e) {
+    msg.textContent = `❌ ${e.message}`;
     msg.className = "err";
   }
 });

@@ -4,8 +4,12 @@ Run with:  uvicorn backend.main:app --host 0.0.0.0 --port 8700
 The frontend is mounted at / so the whole app is served from one process.
 """
 import json
+import os
 import re
+import tempfile
 import time
+import zipfile
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,9 +17,10 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile  # noqa: E402
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
+from starlette.background import BackgroundTask  # noqa: E402
 
 from . import auth, db, extraction, rag  # noqa: E402
 
@@ -240,6 +245,68 @@ def stats():
 @app.get("/api/activity")
 def activity():
     return db.list_activity()
+
+
+# ---------------------------------------------------------- backup / restore
+
+@app.get("/api/backup")
+def download_backup():
+    """Full backup: SQLite snapshot + original uploaded files, as a zip."""
+    tmp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp_zip.close()
+    tmp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp_db.close()
+    try:
+        db.backup_to(tmp_db.name)
+        with zipfile.ZipFile(tmp_zip.name, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(tmp_db.name, "invoices.db")
+            if UPLOAD_DIR.exists():
+                for f in UPLOAD_DIR.iterdir():
+                    if f.is_file():
+                        zf.write(f, f"uploads/{f.name}")
+    finally:
+        os.unlink(tmp_db.name)
+    return FileResponse(
+        tmp_zip.name,
+        filename=f"ap-backup-{date.today().isoformat()}.zip",
+        media_type="application/zip",
+        background=BackgroundTask(os.unlink, tmp_zip.name),
+    )
+
+
+@app.post("/api/restore")
+async def restore_backup(file: UploadFile = File(...)):
+    """Restore a backup zip: replaces the DB and re-adds uploaded files."""
+    data = await file.read()
+    if len(data) > 200 * 1024 * 1024:
+        raise HTTPException(413, "Backup exceeds 200 MB limit.")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = Path(tmpdir) / "backup.zip"
+        zip_path.write_bytes(data)
+        try:
+            zf = zipfile.ZipFile(zip_path)
+        except zipfile.BadZipFile:
+            raise HTTPException(400, "Not a valid backup zip.")
+        with zf:
+            names = zf.namelist()
+            if "invoices.db" not in names:
+                raise HTTPException(400, "Backup zip does not contain invoices.db.")
+            db_tmp = Path(tmpdir) / "invoices.db"
+            db_tmp.write_bytes(zf.read("invoices.db"))
+            if not db.validate_db_file(str(db_tmp)):
+                raise HTTPException(400, "invoices.db in the backup is not a valid invoice database.")
+            restored_files = 0
+            for name in names:
+                if name.startswith("uploads/") and not name.endswith("/"):
+                    safe = _safe_name(Path(name).name)
+                    if safe:
+                        (UPLOAD_DIR / safe).write_bytes(zf.read(name))
+                        restored_files += 1
+            db.replace_db(db_tmp)
+    rag.INDEX.rebuild()
+    count = len(db.list_invoices(limit=100000))
+    db.log_event("restore", f"Backup restored: {count} invoices, {restored_files} files")
+    return {"ok": True, "invoices": count, "files": restored_files}
 
 
 # --------------------------------------------------------------------- chat
