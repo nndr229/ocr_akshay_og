@@ -109,7 +109,7 @@ def _invoice_summary(row: dict) -> str:
         f"[Invoice #{row['id']}] {row.get('vendor_name') or 'Unknown vendor'} | "
         f"No: {row.get('invoice_number') or '-'} | Date: {row.get('invoice_date') or '-'} | "
         f"Due: {row.get('due_date') or '-'} | Status: {row.get('status')} | "
-        f"Total: {row.get('currency') or 'USD'} {row.get('total_amount') if row.get('total_amount') is not None else '-'} "
+        f"Total: {row.get('currency') or 'INR'} {row.get('total_amount') if row.get('total_amount') is not None else '-'} "
         f"(subtotal {row.get('subtotal') if row.get('subtotal') is not None else '-'}, tax {row.get('tax_amount') if row.get('tax_amount') is not None else '-'}) | "
         f"Terms: {row.get('payment_terms') or '-'} | PO: {row.get('po_number') or '-'}"
         f"{items_str}"

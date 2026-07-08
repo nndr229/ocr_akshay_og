@@ -6,7 +6,8 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("DATA_DIR") or Path(__file__).resolve().parent.parent / "data")
+DATA_DIR = Path(os.environ.get("DATA_DIR") or Path(
+    __file__).resolve().parent.parent / "data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "invoices.db"
 
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     invoice_number TEXT,
     invoice_date TEXT,
     due_date TEXT,
-    currency TEXT DEFAULT 'USD',
+    currency TEXT DEFAULT 'INR',
     subtotal REAL,
     tax_amount REAL,
     discount_amount REAL,
@@ -86,7 +87,7 @@ def insert_invoice(data: dict) -> int:
         row["line_items"] = json.dumps(row["line_items"])
     if isinstance(row["extraction_warnings"], (list, dict)):
         row["extraction_warnings"] = json.dumps(row["extraction_warnings"])
-    row["currency"] = row["currency"] or "USD"
+    row["currency"] = "INR"
     row["status"] = row["status"] or "pending"
     row["confidence"] = row["confidence"] or "high"
     row["source"] = row["source"] or "upload"
@@ -114,7 +115,8 @@ def find_duplicate(vendor_name: str | None, invoice_number: str | None) -> dict 
 
 def get_invoice(invoice_id: int) -> dict | None:
     with _lock, _connect() as conn:
-        row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
         return _hydrate(dict(row)) if row else None
 
 
@@ -125,7 +127,8 @@ def list_invoices(status: str | None = None, search: str | None = None, limit: i
         clauses.append("status = ?")
         params.append(status)
     if search:
-        clauses.append("(vendor_name LIKE ? OR invoice_number LIKE ? OR raw_text LIKE ?)")
+        clauses.append(
+            "(vendor_name LIKE ? OR invoice_number LIKE ? OR raw_text LIKE ?)")
         params.extend([f"%{search}%"] * 3)
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
@@ -138,7 +141,8 @@ def list_invoices(status: str | None = None, search: str | None = None, limit: i
 
 def update_status(invoice_id: int, status: str) -> bool:
     with _lock, _connect() as conn:
-        cur = conn.execute("UPDATE invoices SET status = ? WHERE id = ?", (status, invoice_id))
+        cur = conn.execute(
+            "UPDATE invoices SET status = ? WHERE id = ?", (status, invoice_id))
         return cur.rowcount > 0
 
 
@@ -151,14 +155,16 @@ def delete_invoice(invoice_id: int) -> bool:
 def list_activity(limit: int = 100) -> list[dict]:
     with _lock, _connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ?", (limit,)
+            "SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ?", (
+                limit,)
         ).fetchall()
         return [dict(r) for r in rows]
 
 
 def dashboard_stats() -> dict:
     with _lock, _connect() as conn:
-        total = conn.execute("SELECT COUNT(*) c, COALESCE(SUM(total_amount),0) s FROM invoices").fetchone()
+        total = conn.execute(
+            "SELECT COUNT(*) c, COALESCE(SUM(total_amount),0) s FROM invoices").fetchone()
         by_status = conn.execute(
             "SELECT status, COUNT(*) c, COALESCE(SUM(total_amount),0) s FROM invoices GROUP BY status"
         ).fetchall()

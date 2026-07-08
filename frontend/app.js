@@ -3,10 +3,11 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-const fmtMoney = (amount, currency = "USD") => {
+const fmtMoney = (amount, currency = "INR") => {
   if (amount === null || amount === undefined || amount === "") return "—";
+  currency = currency || "INR";
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency }).format(amount);
   } catch {
     return `${currency} ${Number(amount).toFixed(2)}`;
   }
