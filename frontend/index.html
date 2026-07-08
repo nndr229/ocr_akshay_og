@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AP Invoice Console</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">AP</div>
+      <div class="brand-text">
+        <strong>Invoice Console</strong>
+        <span>Accounts Payable</span>
+      </div>
+    </div>
+    <nav>
+      <button class="nav-btn active" data-view="dashboard">📊 Dashboard</button>
+      <button class="nav-btn" data-view="invoices">📋 Invoice Log</button>
+      <button class="nav-btn" data-view="chat">💬 Chat</button>
+      <button class="nav-btn" data-view="manual">✏️ Manual Entry</button>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="nav-btn" id="logout-btn">🚪 Sign out</button>
+      <div style="margin-top:10px">Powered by Claude Sonnet 4.5</div>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- ============ DASHBOARD ============ -->
+    <section id="view-dashboard" class="view active">
+      <header class="view-head">
+        <h1>Dashboard</h1>
+        <button class="btn primary" id="dash-upload-btn">＋ Upload invoices</button>
+      </header>
+      <div class="cards" id="stat-cards"></div>
+      <div class="dash-grid">
+        <div class="panel">
+          <h3>Spend by month</h3>
+          <div id="chart-months" class="bar-chart"></div>
+        </div>
+        <div class="panel">
+          <h3>Top vendors</h3>
+          <div id="chart-vendors" class="hbar-chart"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Due soon</h3>
+        <div id="due-soon"></div>
+      </div>
+      <div class="panel">
+        <h3>Activity log</h3>
+        <div id="activity-log" class="activity"></div>
+      </div>
+    </section>
+
+    <!-- ============ INVOICE LOG ============ -->
+    <section id="view-invoices" class="view">
+      <header class="view-head">
+        <h1>Invoice Log</h1>
+        <div class="filters">
+          <input type="search" id="inv-search" placeholder="Search vendor, number, contents…">
+          <select id="inv-status">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="paid">Paid</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+      </header>
+      <div class="panel">
+        <table class="inv-table">
+          <thead><tr>
+            <th>#</th><th>Vendor</th><th>Invoice No</th><th>Date</th><th>Due</th>
+            <th class="num">Total</th><th>Status</th><th>Source</th><th></th>
+          </tr></thead>
+          <tbody id="inv-rows"></tbody>
+        </table>
+        <div id="inv-empty" class="empty hidden">No invoices yet. Upload one from the Dashboard or Chat, or add one manually.</div>
+      </div>
+    </section>
+
+    <!-- ============ CHAT ============ -->
+    <section id="view-chat" class="view">
+      <header class="view-head"><h1>Chat with your invoices</h1></header>
+      <div class="chat-wrap panel">
+        <div id="chat-messages" class="chat-messages">
+          <div class="msg assistant">
+            <div class="bubble">Hi! I can answer questions about your invoices — totals, due dates, vendor spend, line items. Use the <strong>＋</strong> button to drop in new invoice files (PDF or photos) and I'll extract and file them.</div>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <button id="chat-plus" class="plus-btn" title="Attach invoice files">＋</button>
+          <textarea id="chat-input" rows="1" placeholder="Ask about your invoices…"></textarea>
+          <button id="chat-send" class="btn primary">Send</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MANUAL ENTRY ============ -->
+    <section id="view-manual" class="view">
+      <header class="view-head"><h1>Manual Invoice Entry</h1></header>
+      <div class="panel">
+        <form id="manual-form" class="manual-form">
+          <div class="grid-2">
+            <label>Vendor name *<input name="vendor_name" required></label>
+            <label>Invoice number *<input name="invoice_number" required></label>
+            <label>Invoice date<input name="invoice_date" type="date"></label>
+            <label>Due date<input name="due_date" type="date"></label>
+            <label>Currency
+              <select name="currency">
+                <option>USD</option><option>INR</option><option>EUR</option>
+                <option>GBP</option><option>AED</option><option>SGD</option>
+              </select>
+            </label>
+            <label>PO number<input name="po_number"></label>
+            <label>Subtotal<input name="subtotal" type="number" step="0.01"></label>
+            <label>Tax amount<input name="tax_amount" type="number" step="0.01"></label>
+            <label>Discount<input name="discount_amount" type="number" step="0.01"></label>
+            <label>Total amount *<input name="total_amount" type="number" step="0.01" required></label>
+            <label>Payment terms<input name="payment_terms" placeholder="Net 30"></label>
+          </div>
+          <label>Notes<textarea name="notes" rows="2"></textarea></label>
+
+          <h3>Line items</h3>
+          <div id="line-items"></div>
+          <button type="button" class="btn ghost" id="add-line">＋ Add line item</button>
+
+          <div class="form-actions">
+            <button type="submit" class="btn primary">Save invoice</button>
+            <span id="manual-msg"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- hidden file input shared by all upload buttons -->
+<input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" multiple hidden>
+
+<!-- invoice detail modal -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

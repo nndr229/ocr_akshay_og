@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — AP Invoice Console</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; }
+  .login-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 36px 32px; width: 360px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .login-brand { display: flex; align-items: center; gap: 12px; justify-content: center; }
+  .login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+  .login-err { color: var(--red); font-size: 13px; text-align: center; min-height: 18px; }
+</style>
+</head>
+<body>
+<form class="login-card" id="login-form">
+  <div class="login-brand">
+    <div class="brand-mark">AP</div>
+    <div class="brand-text">
+      <strong>Invoice Console</strong>
+      <span>Accounts Payable</span>
+    </div>
+  </div>
+  <label>Username<input name="username" autocomplete="username" required autofocus></label>
+  <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+  <button class="btn primary" type="submit">Sign in</button>
+  <div class="login-err" id="login-err"></div>
+</form>
+<script>
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("login-err");
+  err.textContent = "";
+  const data = Object.fromEntries(new FormData(e.target));
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Login failed");
+    }
+    window.location.href = "/";
+  } catch (ex) {
+    err.textContent = ex.message;
+  }
+});
+</script>
+</body>
+</html>
